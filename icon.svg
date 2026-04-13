@@ -1,0 +1,30 @@
+<!-- Snake game icon — 512×512 dark tile with a snake made of coloured segments -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" fill="#1a1a2e"/>
+
+  <!-- Snake body (right-to-left across top, then down, then right across bottom) -->
+  <!-- Row 1 segments (head on left) -->
+  <rect x="64"  y="160" width="88" height="88" rx="18" fill="#4ecca3"/><!-- head -->
+  <rect x="160" y="160" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <rect x="256" y="160" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <!-- Turn down -->
+  <rect x="256" y="256" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <!-- Row 2 segments going left -->
+  <rect x="160" y="256" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <rect x="64"  y="256" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <!-- Turn down -->
+  <rect x="64"  y="352" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <!-- Row 3 going right -->
+  <rect x="160" y="352" width="88" height="88" rx="18" fill="#2ea87c"/>
+  <rect x="256" y="352" width="88" height="88" rx="18" fill="#2ea87c"/>
+
+  <!-- Eyes on head (facing right) -->
+  <circle cx="130" cy="192" r="10" fill="#1a1a2e"/>
+  <circle cx="130" cy="216" r="10" fill="#1a1a2e"/>
+
+  <!-- Food (red circle, top-right) -->
+  <circle cx="408" cy="204" r="44" fill="#ff6b6b"/>
+  <!-- Food glow -->
+  <circle cx="408" cy="204" r="56" fill="rgba(255,107,107,0.25)"/>
+</svg>
