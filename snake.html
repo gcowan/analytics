@@ -183,8 +183,68 @@
   <div class="dpad-btn" id="btn-down"  data-dir="down">▼</div>
 </div>
 
-<!-- Game logic (pure, testable) -->
-<script src="snake-logic.js"></script>
+<!-- Game logic (pure, testable) — inlined so the file works standalone -->
+<script>
+(function (exports) {
+  'use strict';
+  function createState(cols, rows) {
+    cols = cols || 25; rows = rows || 25;
+    var cx = Math.floor(cols / 2), cy = Math.floor(rows / 2);
+    return { cols: cols, rows: rows,
+      snake: [{ x: cx, y: cy }, { x: cx-1, y: cy }, { x: cx-2, y: cy }],
+      dir: { x:1, y:0 }, nextDir: { x:1, y:0 }, food: { x:2, y:2 },
+      bonus: null, score: 0, level: 1, speed: 150,
+      running: true, paused: false, justAte: false };
+  }
+  function onSnake(snake, pos) {
+    return snake.some(function(s){ return s.x===pos.x && s.y===pos.y; });
+  }
+  function randomEmpty(snake, food, cols, rows, rng) {
+    rng = rng || Math.random;
+    var pos, attempts = 0;
+    do {
+      pos = { x: Math.floor(rng()*cols), y: Math.floor(rng()*rows) };
+      if (++attempts > cols*rows*2) break;
+    } while (onSnake(snake, pos) ||
+             (food != null && pos.x===food.x && pos.y===food.y));
+    return pos;
+  }
+  function applyDir(state, d) {
+    if (d.x !== 0 && d.x === -state.dir.x) return state;
+    if (d.y !== 0 && d.y === -state.dir.y) return state;
+    return Object.assign({}, state, { nextDir: { x: d.x, y: d.y } });
+  }
+  function step(state, rng) {
+    if (!state.running || state.paused)
+      return Object.assign({}, state, { justAte: false });
+    var cols=state.cols, rows=state.rows;
+    var dir  = { x: state.nextDir.x, y: state.nextDir.y };
+    var head = { x: state.snake[0].x+dir.x, y: state.snake[0].y+dir.y };
+    if (head.x<0 || head.x>=cols || head.y<0 || head.y>=rows)
+      return Object.assign({}, state, { running:false, dir:dir, justAte:false });
+    var food = state.food;
+    var willEat = food && head.x===food.x && head.y===food.y;
+    var bodyToCheck = willEat ? state.snake : state.snake.slice(0,-1);
+    if (bodyToCheck.some(function(s){ return s.x===head.x && s.y===head.y; }))
+      return Object.assign({}, state, { running:false, dir:dir, justAte:false });
+    var newSnake=[head].concat(state.snake), bonus=state.bonus,
+        score=state.score, level=state.level, speed=state.speed, justAte=false;
+    if (willEat) {
+      score += 10*level; justAte = true;
+      food = randomEmpty(newSnake, null, cols, rows, rng);
+      if (score >= level*50*level) { level++; speed = Math.max(60, speed-15); }
+    } else if (bonus && head.x===bonus.x && head.y===bonus.y) {
+      score += 50*level; bonus = null; justAte = true;
+    }
+    var finalSnake = (justAte && willEat) ? newSnake : newSnake.slice(0,-1);
+    return Object.assign({}, state,
+      { snake:finalSnake, dir:dir, food:food, bonus:bonus,
+        score:score, level:level, speed:speed, justAte:justAte });
+  }
+  exports.createState=createState; exports.onSnake=onSnake;
+  exports.randomEmpty=randomEmpty; exports.applyDir=applyDir; exports.step=step;
+})(typeof module!=='undefined' ? module.exports : (window.SnakeLogic=window.SnakeLogic||{}));
+</script>
 
 <script>
   // ── Constants ──────────────────────────────────────────────────────────────
