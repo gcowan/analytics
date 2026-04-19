@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Expandable Tic-Tac-Toe</title>
+  <title>🐧 vs 🐢 Tic-Tac-Toe</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -63,30 +63,25 @@
 
     button:active { transform: scale(0.97); }
 
-    #startBtn {
-      background: #e94560;
-      color: #fff;
-    }
+    #startBtn { background: #e94560; color: #fff; }
     #startBtn:hover { background: #c73652; }
 
     .status {
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       font-weight: 600;
       margin-bottom: 16px;
-      min-height: 1.6em;
+      min-height: 1.8em;
       color: #cce;
+      transition: color 0.2s;
     }
 
-    .status.x-turn  { color: #7ec8e3; }
-    .status.o-turn  { color: #f4a261; }
-    .status.x-wins  { color: #56d364; }
-    .status.o-wins  { color: #f85149; }
+    .status.p-turn  { color: #7ec8e3; }
+    .status.t-turn  { color: #6fcf97; }
+    .status.p-wins  { color: #7ec8e3; }
+    .status.t-wins  { color: #6fcf97; }
     .status.draw    { color: #aaa; }
 
-    .board-wrapper {
-      overflow: auto;
-      max-width: 100vw;
-    }
+    .board-wrapper { overflow: auto; max-width: 100vw; }
 
     .board {
       display: grid;
@@ -101,22 +96,58 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
       border-radius: 8px;
       cursor: pointer;
       background: #16213e;
-      transition: background 0.12s;
+      transition: background 0.12s, transform 0.1s;
       line-height: 1;
     }
 
-    .cell:hover:not(.taken) { background: #1f2f5a; }
+    .cell:hover:not(.taken) { background: #1f2f5a; transform: scale(1.05); }
     .cell.taken { cursor: default; }
 
-    .cell.x { color: #7ec8e3; }
-    .cell.o { color: #f4a261; }
-    .cell.winning { background: #1c3b2e; }
-    .cell.x.winning { color: #56d364; }
-    .cell.o.winning { color: #56d364; }
+    @keyframes pop-in {
+      0%   { transform: scale(0.3) rotate(-15deg); opacity: 0; }
+      60%  { transform: scale(1.2) rotate(5deg); }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    .cell.just-placed { animation: pop-in 0.25s ease-out forwards; }
+
+    @keyframes celebrate {
+      0%, 100% { transform: scale(1) rotate(0deg); }
+      20%  { transform: scale(1.3) rotate(-8deg); }
+      40%  { transform: scale(1.3) rotate(8deg); }
+      60%  { transform: scale(1.2) rotate(-5deg); }
+      80%  { transform: scale(1.2) rotate(5deg); }
+    }
+
+    .cell.winning {
+      background: #1c3b2e;
+      animation: celebrate 0.6s ease-in-out infinite alternate;
+    }
+
+    .confetti-container {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 999;
+    }
+
+    @keyframes confetti-fall {
+      0%   { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+
+    .confetti-piece {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      animation: confetti-fall linear forwards;
+    }
 
     .score-board {
       display: flex;
@@ -127,19 +158,16 @@
       border-radius: 12px;
     }
 
-    .score-item {
-      text-align: center;
-    }
-
+    .score-item { text-align: center; }
     .score-label { font-size: 0.8rem; color: #aab; text-transform: uppercase; letter-spacing: 1px; }
     .score-value { font-size: 1.8rem; font-weight: 700; }
-    .score-item.x .score-value { color: #7ec8e3; }
-    .score-item.o .score-value { color: #f4a261; }
+    .score-item.p .score-value { color: #7ec8e3; }
+    .score-item.t .score-value { color: #6fcf97; }
     .score-item.draw-score .score-value { color: #aaa; }
   </style>
 </head>
 <body>
-  <h1>Tic-Tac-Toe</h1>
+  <h1>🐧 vs 🐢</h1>
 
   <div class="controls">
     <div class="control-group">
@@ -160,19 +188,21 @@
   </div>
 
   <div class="score-board">
-    <div class="score-item x">
-      <div class="score-label">X</div>
-      <div class="score-value" id="scoreX">0</div>
+    <div class="score-item p">
+      <div class="score-label">🐧 Penguin</div>
+      <div class="score-value" id="scoreP">0</div>
     </div>
     <div class="score-item draw-score">
       <div class="score-label">Draws</div>
       <div class="score-value" id="scoreD">0</div>
     </div>
-    <div class="score-item o">
-      <div class="score-label">O</div>
-      <div class="score-value" id="scoreO">0</div>
+    <div class="score-item t">
+      <div class="score-label">🐢 Turtle</div>
+      <div class="score-value" id="scoreT">0</div>
     </div>
   </div>
+
+  <div class="confetti-container" id="confetti"></div>
 
   <script>
     const boardEl  = document.getElementById('board');
@@ -180,32 +210,115 @@
     const startBtn = document.getElementById('startBtn');
     const gridIn   = document.getElementById('gridSize');
     const winIn    = document.getElementById('winLen');
-    const scoreXEl = document.getElementById('scoreX');
-    const scoreOEl = document.getElementById('scoreO');
+    const scorePEl = document.getElementById('scoreP');
+    const scoreTEl = document.getElementById('scoreT');
     const scoreDEl = document.getElementById('scoreD');
+    const confettiEl = document.getElementById('confetti');
 
+    const PLAYERS = { P: '🐧', T: '🐢' };
     let size, winLen, cells, currentPlayer, gameOver;
-    let scores = { X: 0, O: 0, D: 0 };
+    let scores = { P: 0, T: 0, D: 0 };
 
+    // ── Audio ──────────────────────────────────────────────────────────────
+    let audioCtx = null;
+    function getAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return audioCtx;
+    }
+
+    function playTone(freq, type, duration, gainVal, startTime, ctx) {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(gainVal, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    }
+
+    function soundPenguin() {
+      const ctx = getAudio();
+      const t = ctx.currentTime;
+      playTone(1046, 'sine', 0.12, 0.4, t,        ctx);
+      playTone(1318, 'sine', 0.10, 0.3, t + 0.13, ctx);
+    }
+
+    function soundTurtle() {
+      const ctx = getAudio();
+      const t = ctx.currentTime;
+      playTone(196, 'triangle', 0.18, 0.5, t,        ctx);
+      playTone(130, 'triangle', 0.14, 0.3, t + 0.06, ctx);
+    }
+
+    function soundWin(isPenguin) {
+      const ctx = getAudio();
+      const t = ctx.currentTime;
+      const base = isPenguin ? 523 : 196;
+      const notes = [1, 5/4, 3/2, 2, 8/3];
+      notes.forEach((ratio, i) => {
+        playTone(base * ratio, isPenguin ? 'sine' : 'triangle', 0.25, 0.4, t + i * 0.14, ctx);
+      });
+    }
+
+    function soundDraw() {
+      const ctx = getAudio();
+      const t = ctx.currentTime;
+      [440, 370, 311].forEach((f, i) => {
+        playTone(f, 'sawtooth', 0.2, 0.2, t + i * 0.15, ctx);
+      });
+    }
+
+    // ── Confetti ───────────────────────────────────────────────────────────
+    const CONFETTI_COLORS = ['#7ec8e3','#6fcf97','#f4a261','#e94560','#ffe066','#c8b1e4'];
+
+    function launchConfetti() {
+      confettiEl.innerHTML = '';
+      for (let i = 0; i < 80; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+        const left  = Math.random() * 100;
+        const delay = Math.random() * 0.6;
+        const dur   = 1.5 + Math.random() * 1.5;
+        const size  = 6 + Math.random() * 10;
+        piece.style.cssText = `
+          left: ${left}vw;
+          width: ${size}px;
+          height: ${size}px;
+          background: ${color};
+          animation-duration: ${dur}s;
+          animation-delay: ${delay}s;
+          border-radius: ${Math.random() > 0.5 ? '50%' : '2px'};
+        `;
+        confettiEl.appendChild(piece);
+      }
+      setTimeout(() => { confettiEl.innerHTML = ''; }, 3500);
+    }
+
+    // ── Game logic ─────────────────────────────────────────────────────────
     startBtn.addEventListener('click', startGame);
 
     function startGame() {
       size = Math.min(20, Math.max(3, parseInt(gridIn.value) || 5));
       winLen = Math.min(size, Math.max(3, parseInt(winIn.value) || 4));
       gridIn.value = size;
-      winIn.value = winLen;
+      winIn.value  = winLen;
 
       cells = Array(size * size).fill(null);
-      currentPlayer = 'X';
+      currentPlayer = 'P';
       gameOver = false;
+      confettiEl.innerHTML = '';
 
       renderBoard();
-      setStatus(`X's turn`, 'x-turn');
+      setStatus(`🐧 Penguin's turn`, 'p-turn');
     }
 
     function renderBoard() {
-      const cellPx = Math.max(32, Math.min(72, Math.floor(560 / size)));
-      const fontSize = Math.round(cellPx * 0.55);
+      const cellPx   = Math.max(32, Math.min(72, Math.floor(560 / size)));
+      const fontSize = Math.round(cellPx * 0.58);
 
       boardEl.style.gridTemplateColumns = `repeat(${size}, ${cellPx}px)`;
       boardEl.innerHTML = '';
@@ -213,11 +326,11 @@
       cells.forEach((val, idx) => {
         const cell = document.createElement('div');
         cell.className = 'cell' + (val ? ` ${val.toLowerCase()} taken` : '');
-        cell.style.width  = `${cellPx}px`;
-        cell.style.height = `${cellPx}px`;
+        cell.style.width    = `${cellPx}px`;
+        cell.style.height   = `${cellPx}px`;
         cell.style.fontSize = `${fontSize}px`;
-        cell.textContent = val || '';
-        cell.dataset.idx = idx;
+        cell.textContent    = val ? PLAYERS[val] : '';
+        cell.dataset.idx    = idx;
         cell.addEventListener('click', onCellClick);
         boardEl.appendChild(cell);
       });
@@ -230,29 +343,36 @@
 
       cells[idx] = currentPlayer;
       const cellEl = boardEl.children[idx];
-      cellEl.textContent = currentPlayer;
-      cellEl.classList.add(currentPlayer.toLowerCase(), 'taken');
+      cellEl.textContent = PLAYERS[currentPlayer];
+      cellEl.classList.add(currentPlayer.toLowerCase(), 'taken', 'just-placed');
+      cellEl.addEventListener('animationend', () => cellEl.classList.remove('just-placed'), { once: true });
+
+      if (currentPlayer === 'P') soundPenguin(); else soundTurtle();
 
       const winning = getWinningLine(idx);
       if (winning) {
         winning.forEach(i => boardEl.children[i].classList.add('winning'));
-        setStatus(`${currentPlayer} wins!`, currentPlayer === 'X' ? 'x-wins' : 'o-wins');
+        const isPenguin = currentPlayer === 'P';
+        setStatus(`${PLAYERS[currentPlayer]} ${isPenguin ? 'Penguin' : 'Turtle'} wins! 🎉`, isPenguin ? 'p-wins' : 't-wins');
         scores[currentPlayer]++;
         updateScores();
+        soundWin(isPenguin);
+        launchConfetti();
         gameOver = true;
         return;
       }
 
       if (cells.every(Boolean)) {
-        setStatus('Draw!', 'draw');
+        setStatus('Draw! 🤝', 'draw');
         scores.D++;
         updateScores();
+        soundDraw();
         gameOver = true;
         return;
       }
 
-      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
-      setStatus(`${currentPlayer}'s turn`, currentPlayer === 'X' ? 'x-turn' : 'o-turn');
+      currentPlayer = currentPlayer === 'P' ? 'T' : 'P';
+      setStatus(`${PLAYERS[currentPlayer]} ${currentPlayer === 'P' ? "Penguin's" : "Turtle's"} turn`, currentPlayer === 'P' ? 'p-turn' : 't-turn');
     }
 
     function getWinningLine(lastIdx) {
@@ -278,16 +398,15 @@
 
     function setStatus(text, cls) {
       statusEl.textContent = text;
-      statusEl.className = 'status ' + (cls || '');
+      statusEl.className   = 'status ' + (cls || '');
     }
 
     function updateScores() {
-      scoreXEl.textContent = scores.X;
-      scoreOEl.textContent = scores.O;
+      scorePEl.textContent = scores.P;
+      scoreTEl.textContent = scores.T;
       scoreDEl.textContent = scores.D;
     }
 
-    // Auto-start on load
     startGame();
   </script>
 </body>
