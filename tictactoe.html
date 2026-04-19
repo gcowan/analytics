@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expandable Tic-Tac-Toe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    h1 { font-size: 2rem; margin-bottom: 8px; color: #e0e0ff; }
+
+    .controls {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 20px;
+      background: #16213e;
+      padding: 14px 24px;
+      border-radius: 12px;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label { font-size: 0.9rem; color: #aab; }
+
+    input[type="number"] {
+      width: 60px;
+      padding: 6px 8px;
+      border: 1px solid #334;
+      border-radius: 6px;
+      background: #0f3460;
+      color: #eee;
+      font-size: 1rem;
+      text-align: center;
+    }
+
+    button {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:active { transform: scale(0.97); }
+
+    #startBtn {
+      background: #e94560;
+      color: #fff;
+    }
+    #startBtn:hover { background: #c73652; }
+
+    .status {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      min-height: 1.6em;
+      color: #cce;
+    }
+
+    .status.x-turn  { color: #7ec8e3; }
+    .status.o-turn  { color: #f4a261; }
+    .status.x-wins  { color: #56d364; }
+    .status.o-wins  { color: #f85149; }
+    .status.draw    { color: #aaa; }
+
+    .board-wrapper {
+      overflow: auto;
+      max-width: 100vw;
+    }
+
+    .board {
+      display: grid;
+      gap: 4px;
+      padding: 4px;
+      background: #0f3460;
+      border-radius: 12px;
+      user-select: none;
+    }
+
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #16213e;
+      transition: background 0.12s;
+      line-height: 1;
+    }
+
+    .cell:hover:not(.taken) { background: #1f2f5a; }
+    .cell.taken { cursor: default; }
+
+    .cell.x { color: #7ec8e3; }
+    .cell.o { color: #f4a261; }
+    .cell.winning { background: #1c3b2e; }
+    .cell.x.winning { color: #56d364; }
+    .cell.o.winning { color: #56d364; }
+
+    .score-board {
+      display: flex;
+      gap: 32px;
+      margin-top: 20px;
+      background: #16213e;
+      padding: 12px 28px;
+      border-radius: 12px;
+    }
+
+    .score-item {
+      text-align: center;
+    }
+
+    .score-label { font-size: 0.8rem; color: #aab; text-transform: uppercase; letter-spacing: 1px; }
+    .score-value { font-size: 1.8rem; font-weight: 700; }
+    .score-item.x .score-value { color: #7ec8e3; }
+    .score-item.o .score-value { color: #f4a261; }
+    .score-item.draw-score .score-value { color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>Tic-Tac-Toe</h1>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="gridSize">Grid size</label>
+      <input type="number" id="gridSize" min="3" max="20" value="5">
+    </div>
+    <div class="control-group">
+      <label for="winLen">Win streak</label>
+      <input type="number" id="winLen" min="3" max="20" value="4">
+    </div>
+    <button id="startBtn">New Game</button>
+  </div>
+
+  <div class="status" id="status">Press "New Game" to start</div>
+
+  <div class="board-wrapper">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="score-board">
+    <div class="score-item x">
+      <div class="score-label">X</div>
+      <div class="score-value" id="scoreX">0</div>
+    </div>
+    <div class="score-item draw-score">
+      <div class="score-label">Draws</div>
+      <div class="score-value" id="scoreD">0</div>
+    </div>
+    <div class="score-item o">
+      <div class="score-label">O</div>
+      <div class="score-value" id="scoreO">0</div>
+    </div>
+  </div>
+
+  <script>
+    const boardEl  = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+    const gridIn   = document.getElementById('gridSize');
+    const winIn    = document.getElementById('winLen');
+    const scoreXEl = document.getElementById('scoreX');
+    const scoreOEl = document.getElementById('scoreO');
+    const scoreDEl = document.getElementById('scoreD');
+
+    let size, winLen, cells, currentPlayer, gameOver;
+    let scores = { X: 0, O: 0, D: 0 };
+
+    startBtn.addEventListener('click', startGame);
+
+    function startGame() {
+      size = Math.min(20, Math.max(3, parseInt(gridIn.value) || 5));
+      winLen = Math.min(size, Math.max(3, parseInt(winIn.value) || 4));
+      gridIn.value = size;
+      winIn.value = winLen;
+
+      cells = Array(size * size).fill(null);
+      currentPlayer = 'X';
+      gameOver = false;
+
+      renderBoard();
+      setStatus(`X's turn`, 'x-turn');
+    }
+
+    function renderBoard() {
+      const cellPx = Math.max(32, Math.min(72, Math.floor(560 / size)));
+      const fontSize = Math.round(cellPx * 0.55);
+
+      boardEl.style.gridTemplateColumns = `repeat(${size}, ${cellPx}px)`;
+      boardEl.innerHTML = '';
+
+      cells.forEach((val, idx) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (val ? ` ${val.toLowerCase()} taken` : '');
+        cell.style.width  = `${cellPx}px`;
+        cell.style.height = `${cellPx}px`;
+        cell.style.fontSize = `${fontSize}px`;
+        cell.textContent = val || '';
+        cell.dataset.idx = idx;
+        cell.addEventListener('click', onCellClick);
+        boardEl.appendChild(cell);
+      });
+    }
+
+    function onCellClick(e) {
+      if (gameOver) return;
+      const idx = parseInt(e.currentTarget.dataset.idx);
+      if (cells[idx]) return;
+
+      cells[idx] = currentPlayer;
+      const cellEl = boardEl.children[idx];
+      cellEl.textContent = currentPlayer;
+      cellEl.classList.add(currentPlayer.toLowerCase(), 'taken');
+
+      const winning = getWinningLine(idx);
+      if (winning) {
+        winning.forEach(i => boardEl.children[i].classList.add('winning'));
+        setStatus(`${currentPlayer} wins!`, currentPlayer === 'X' ? 'x-wins' : 'o-wins');
+        scores[currentPlayer]++;
+        updateScores();
+        gameOver = true;
+        return;
+      }
+
+      if (cells.every(Boolean)) {
+        setStatus('Draw!', 'draw');
+        scores.D++;
+        updateScores();
+        gameOver = true;
+        return;
+      }
+
+      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+      setStatus(`${currentPlayer}'s turn`, currentPlayer === 'X' ? 'x-turn' : 'o-turn');
+    }
+
+    function getWinningLine(lastIdx) {
+      const row = Math.floor(lastIdx / size);
+      const col = lastIdx % size;
+      const p   = cells[lastIdx];
+
+      const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+      for (const [dr, dc] of dirs) {
+        const line = [lastIdx];
+        for (const sign of [1, -1]) {
+          let r = row + dr * sign, c = col + dc * sign;
+          while (r >= 0 && r < size && c >= 0 && c < size && cells[r * size + c] === p) {
+            line.push(r * size + c);
+            r += dr * sign;
+            c += dc * sign;
+          }
+        }
+        if (line.length >= winLen) return line;
+      }
+      return null;
+    }
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + (cls || '');
+    }
+
+    function updateScores() {
+      scoreXEl.textContent = scores.X;
+      scoreOEl.textContent = scores.O;
+      scoreDEl.textContent = scores.D;
+    }
+
+    // Auto-start on load
+    startGame();
+  </script>
+</body>
+</html>
