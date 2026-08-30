@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word lists &amp; printables — OG Games</title>
+<meta name="description" content="Every word bank used in the games, ready to print — plus a builder that turns your own list into a link that opens straight inside a game.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .list-card { break-inside: avoid; }
+  .words { display: flex; flex-wrap: wrap; gap: 6px; }
+  .words span { padding: 3px 11px; border-radius: var(--r-full); background: var(--surface-2); font-size: .96rem; }
+  .builder { display: grid; gap: var(--sp-4); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 780px) { .builder { grid-template-columns: 1fr; } }
+  .field textarea { min-height: 170px; resize: vertical; font-family: var(--font-read); }
+  .linkbox {
+    display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap;
+    background: var(--surface-2); border-radius: var(--r-md); padding: var(--sp-3); word-break: break-all;
+    font-size: .9rem; font-family: ui-monospace, Menlo, Consolas, monospace;
+  }
+  .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  .sheet span { border-bottom: 1px solid var(--line); padding: 6px 2px; font-size: 1.05rem; }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <h1 style="margin-top:var(--sp-6)">Word lists &amp; printables</h1>
+    <p style="max-width:62ch;color:var(--ink-2)">Every word bank behind the games, in one place. Print a set for
+      pencil-and-paper work, or type your own list and get a link that opens a game already loaded with it —
+      no account, no homework app, nothing to install.</p>
+
+    <section class="stage no-print" style="margin-bottom:var(--sp-6)" aria-labelledby="builder-h">
+      <h2 id="builder-h">Build a list for this week</h2>
+      <p class="muted">For tutors: paste the words from today's lesson. The link works on any device and
+        never expires — the words travel inside the link itself, so nothing is stored on a server.</p>
+      <div class="builder">
+        <div>
+          <label class="field">
+            <span>Your words (one per line, or separated by commas)</span>
+            <textarea class="input" id="custom-words" placeholder="ship&#10;chop&#10;thin&#10;whip&#10;duck"></textarea>
+          </label>
+          <div class="btn-row" style="margin-top:var(--sp-3)">
+            <button class="btn" type="button" id="make">Make the link</button>
+            <button class="btn btn--ghost" type="button" id="clear">Clear</button>
+          </div>
+        </div>
+        <div id="builder-out" class="stack">
+          <p class="muted">Your link and a printable sheet will appear here.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="sets-h">
+      <h2 id="sets-h">Decoding sets</h2>
+      <p class="muted no-print">In teaching order. Each one is a round in <a href="blend.html">Blend &amp; Build</a>.</p>
+      <div class="grid grid--two" id="sets"></div>
+    </section>
+
+    <section aria-labelledby="sorts-h" style="margin-top:var(--sp-7)">
+      <h2 id="sorts-h">Spelling-rule sorts</h2>
+      <p class="muted no-print">The rule, then the words that prove it. Played in <a href="sound-sort.html">Sound Sort</a>.</p>
+      <div class="grid grid--two" id="sorts"></div>
+    </section>
+
+    <section aria-labelledby="heart-h" style="margin-top:var(--sp-7)">
+      <h2 id="heart-h">Heart words</h2>
+      <p class="muted no-print">Red letters are the parts to learn by heart. Played in <a href="heart-words.html">Heart Words</a>.</p>
+      <div class="panel"><div class="sheet" id="heart"></div></div>
+    </section>
+
+    <section aria-labelledby="syll-h" style="margin-top:var(--sp-7)">
+      <h2 id="syll-h">Syllable division words</h2>
+      <div class="grid grid--two" id="syll"></div>
+    </section>
+
+    <div class="btn-row no-print" style="margin-top:var(--sp-7)">
+      <button class="btn" type="button" onclick="window.print()">Print everything</button>
+      <a class="btn btn--ghost" href="index.html">Back to the games</a>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+
+  function chips(words) {
+    return OG.el('div', { class: 'words' }, words.map(function (w) { return OG.el('span', { text: w }); }));
+  }
+
+  D.SETS.forEach(function (s) {
+    document.getElementById('sets').appendChild(
+      OG.el('div', { class: 'panel list-card stack' }, [
+        OG.el('h3', { text: s.label }),
+        OG.el('p', { class: 'muted', style: 'margin:0', text: 'Stage ' + s.level + ' · ' + s.words.length + ' words' }),
+        chips(s.words.map(function (w) { return w.w; }))
+      ]));
+  });
+
+  D.SORTS.forEach(function (s) {
+    var cols = s.columns.map(function (c) {
+      var words = s.items.filter(function (it) { return it[1] === c.id; }).map(function (it) { return it[0]; });
+      return OG.el('div', {}, [
+        OG.el('h4', { style: 'margin:0 0 6px;color:var(--brand-700)', text: c.label + ' — ' + c.hint }),
+        chips(words)
+      ]);
+    });
+    if (s.tricky) {
+      cols.push(OG.el('div', {}, [
+        OG.el('h4', { style: 'margin:0 0 6px;color:var(--coral-ink)', text: 'Rule breakers' }),
+        chips(s.tricky)
+      ]));
+    }
+    document.getElementById('sorts').appendChild(
+      OG.el('div', { class: 'panel list-card stack' },
+        [OG.el('h3', { text: s.title }), OG.el('p', { class: 'muted', style: 'margin:0', text: s.rule })].concat(cols)));
+  });
+
+  var heartBox = document.getElementById('heart');
+  D.HEART.forEach(function (item) {
+    heartBox.appendChild(OG.el('span', {}, item.w.split('').map(function (ch, i) {
+      return OG.el('b', { text: ch, style: item.heart.indexOf(i) !== -1 ? 'color:var(--coral-ink)' : 'font-weight:400' });
+    })));
+  });
+
+  var patterns = {};
+  D.SYLLABLES.forEach(function (s) { (patterns[s.pattern] = patterns[s.pattern] || []).push(s); });
+  Object.keys(patterns).forEach(function (p) {
+    document.getElementById('syll').appendChild(
+      OG.el('div', { class: 'panel list-card stack' }, [
+        OG.el('h3', { text: p }),
+        chips(patterns[p].map(function (s) { return s.w.slice(0, s.split) + '·' + s.w.slice(s.split); }))
+      ]));
+  });
+
+  /* --- custom list builder ---------------------------------------------- */
+  var out = document.getElementById('builder-out');
+  document.getElementById('make').addEventListener('click', function () {
+    var raw = document.getElementById('custom-words').value || '';
+    var words = raw.split(/[\s,;]+/).map(function (w) { return w.trim().toLowerCase(); })
+      .filter(function (w) { return w && /^[a-z'-]+$/.test(w); });
+    out.innerHTML = '';
+    if (!words.length) {
+      out.appendChild(OG.el('p', { class: 'muted', text: 'Add a few words first — letters only, one per line.' }));
+      return;
+    }
+    if (words.length > 40) words = words.slice(0, 40);
+    // The words travel inside the link, so nothing has to be stored anywhere.
+    var base = location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '') +
+               'blend.html#w=' + OG.encodeList(words);
+
+    out.appendChild(OG.el('h3', { text: words.length + ' words ready' }));
+    out.appendChild(OG.el('p', { class: 'muted', style: 'margin:0',
+      text: 'Send this link. It opens Blend & Build with these words already loaded.' }));
+    var box = OG.el('div', { class: 'linkbox' }, [OG.el('span', { text: base, id: 'the-link' })]);
+    out.appendChild(box);
+    out.appendChild(OG.el('div', { class: 'btn-row' }, [
+      OG.el('button', {
+        class: 'btn', type: 'button', text: 'Copy link',
+        onclick: function () {
+          var btn = this;
+          var done = function () { btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = 'Copy link'; }, 1800); };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(base).then(done, function () { fallbackCopy(base, done); });
+          } else { fallbackCopy(base, done); }
+        }
+      }),
+      OG.el('a', { class: 'btn btn--ghost', href: base, text: 'Open it now' }),
+      OG.el('button', { class: 'btn btn--ghost', type: 'button', text: 'Print this list', onclick: function () { window.print(); } })
+    ]));
+    out.appendChild(OG.el('div', { class: 'panel' }, [
+      OG.el('h4', { style: 'margin:0 0 var(--sp-2)', text: 'Printable sheet' }),
+      OG.el('div', { class: 'sheet' }, words.map(function (w) { return OG.el('span', { text: w }); }))
+    ]));
+  });
+
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { /* user can select it manually */ }
+    document.body.removeChild(ta);
+  }
+
+  document.getElementById('clear').addEventListener('click', function () {
+    document.getElementById('custom-words').value = '';
+    out.innerHTML = '';
+    out.appendChild(OG.el('p', { class: 'muted', text: 'Your link and a printable sheet will appear here.' }));
+  });
+
+  OG.shell({ active: 'word-lists.html' });
+}());
+</script>
+</body>
+</html>

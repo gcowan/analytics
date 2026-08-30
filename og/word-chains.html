@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Chains — OG Games</title>
+<meta name="description" content="Change one sound at a time: sat to sit to sip. Fast phoneme-awareness practice with letter tiles.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .controls { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--sp-5); }
+  .tile[aria-pressed="true"] { outline: 3px solid var(--focus); outline-offset: 3px; }
+  .bank { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: var(--sp-4); }
+  .bank .tile { min-width: clamp(40px, 9vw, 60px); min-height: clamp(46px, 10vw, 64px); font-size: clamp(1.2rem, 4vw, 1.7rem); }
+  .trail { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; margin-bottom: var(--sp-3); }
+  .trail span { padding: 3px 12px; border-radius: var(--r-full); background: var(--surface-2); font-weight: 650; font-size: .95rem; }
+  .trail span:last-child { background: var(--brand-100); color: var(--brand-700); }
+  .target { text-align: center; font-size: 1.15rem; font-weight: 650; margin: var(--sp-3) 0; }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <h1>Word Chains</h1>
+        <p>Each new word is one sound away from the last one. Hear it, find the sound that
+           changed, and swap that tile — nothing else.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="controls no-print">
+        <label class="field">
+          <span>Chain</span>
+          <select id="chain-select"></select>
+        </label>
+        <label class="field">
+          <span>Show the target word</span>
+          <select id="reveal-select">
+            <option value="hide">No — listen only (harder)</option>
+            <option value="show">Yes — show it</option>
+          </select>
+        </label>
+        <button class="btn" type="button" id="start">Start the chain</button>
+      </div>
+
+      <div id="play" hidden>
+        <div class="scorebar">
+          <div><span>Link</span> <strong id="pos">1</strong> <span>of <span id="total">6</span></span></div>
+          <div><span>First-time swaps</span> <strong id="score">0</strong></div>
+          <div style="flex:1;min-width:140px"><div class="progressbar"><i id="bar"></i></div></div>
+        </div>
+
+        <div class="trail" id="trail"></div>
+        <p class="target" id="target"></p>
+        <div class="word" id="word-row"></div>
+        <p class="muted" style="text-align:center;font-size:.94rem" id="hint-line">
+          Tap the sound that needs to change, then choose its replacement below.
+        </p>
+        <div class="bank" id="bank"></div>
+
+        <div class="btn-row" style="justify-content:center;margin-top:var(--sp-4)">
+          <button class="btn btn--ghost" type="button" id="hear">🔊 Hear the next word</button>
+          <button class="btn btn--ghost" type="button" id="hear-current">Hear what I have</button>
+        </div>
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      </div>
+
+      <div id="done" hidden>
+        <h2>Chain complete</h2>
+        <p id="done-line"></p>
+        <div class="trail" id="done-trail"></div>
+        <div class="btn-row" style="margin-top:var(--sp-4)">
+          <button class="btn" type="button" id="again">Another chain</button>
+          <a class="btn btn--ghost" href="index.html">All games</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage no-print">
+      <h2>For the grown-up</h2>
+      <p class="muted" style="margin:0">This is the single best five-minute drill for a child who reads a word
+        by its first letter and guesses the rest. Say the target word once, normally — don't stretch it and don't
+        point at the tile. If they are stuck, ask “what did you hear at the start / in the middle / at the end?”
+        rather than naming the letter.</p>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+  var chainSelect = document.getElementById('chain-select');
+  var revealSelect = document.getElementById('reveal-select');
+  var wordRow = document.getElementById('word-row');
+  var bank = document.getElementById('bank');
+  var feedback = document.getElementById('feedback');
+  var targetEl = document.getElementById('target');
+  var trail = document.getElementById('trail');
+  var play = document.getElementById('play');
+  var done = document.getElementById('done');
+  var state = null;
+  var controlsEl = document.querySelector('.controls');
+
+  /* Let a player back out to the setup panel without reloading the page. */
+  (function () {
+    var bar = document.querySelector('.scorebar');
+    if (!bar) return;
+    bar.appendChild(OG.el('button', {
+      class: 'btn btn--quiet no-print', type: 'button', text: 'Change setup',
+      onclick: function () { controlsEl.hidden = false; play.hidden = true; done.hidden = true; }
+    }));
+  }());
+
+  D.CHAINS.forEach(function (c, i) {
+    chainSelect.appendChild(OG.el('option', {
+      value: String(i), text: 'Stage ' + c.level + ' · ' + c.words[0] + ' → ' + c.words[c.words.length - 1]
+    }));
+  });
+
+  function bankGraphemes(chain) {
+    var seen = {};
+    chain.words.forEach(function (w) { D.segment(w).forEach(function (g) { seen[g] = true; }); });
+    ['b','m','s','t','p','n','d','f','a','e','i','o','u'].forEach(function (g) { seen[g] = true; });
+    return Object.keys(seen).sort();
+  }
+
+  function start() {
+    var chain = D.CHAINS[parseInt(chainSelect.value, 10)];
+    state = {
+      chain: chain, step: 1, correct: 0, slips: 0,
+      current: D.segment(chain.words[0]),
+      selected: null,
+      bank: bankGraphemes(chain),
+      history: [chain.words[0]]
+    };
+    document.getElementById('total').textContent = String(chain.words.length - 1);
+    play.hidden = false; done.hidden = true; controlsEl.hidden = true;
+    renderAll();
+    speakTarget();
+  }
+
+  function target() { return state.chain.words[state.step]; }
+
+  function speakTarget() { OG.say('Make the word ' + target(), { rate: 0.8 }); }
+
+  function renderAll() {
+    document.getElementById('pos').textContent = String(state.step);
+    document.getElementById('score').textContent = String(state.correct);
+    document.getElementById('bar').style.width =
+      Math.round(((state.step - 1) / (state.chain.words.length - 1)) * 100) + '%';
+
+    trail.innerHTML = '';
+    state.history.forEach(function (w) { trail.appendChild(OG.el('span', { text: w })); });
+
+    targetEl.textContent = revealSelect.value === 'show'
+      ? 'Make the word: ' + target()
+      : 'Listen, then make the next word.';
+
+    renderWord();
+    renderBank();
+  }
+
+  function renderWord() {
+    wordRow.innerHTML = '';
+    state.current.forEach(function (g, idx) {
+      var meta = D.GRAPHEMES[g];
+      var cls = 'tile';
+      if (meta && (meta.type === 'vowel' || meta.type === 'team')) cls += ' tile--vowel';
+      else if (meta && (meta.type === 'digraph' || meta.type === 'rcontrolled')) cls += ' tile--digraph';
+      if (state.selected === idx) cls += ' tile--on';
+      wordRow.appendChild(OG.el('button', {
+        class: cls, type: 'button', text: g,
+        'aria-pressed': String(state.selected === idx),
+        'aria-label': g + ', position ' + (idx + 1),
+        onclick: function () {
+          state.selected = state.selected === idx ? null : idx;
+          renderWord();
+          if (state.selected !== null) OG.sayGrapheme(g, D.GRAPHEMES);
+        }
+      }));
+    });
+  }
+
+  function renderBank() {
+    bank.innerHTML = '';
+    state.bank.forEach(function (g) {
+      var meta = D.GRAPHEMES[g];
+      var cls = 'tile';
+      if (meta && (meta.type === 'vowel' || meta.type === 'team')) cls += ' tile--vowel';
+      else if (meta && (meta.type === 'digraph' || meta.type === 'rcontrolled')) cls += ' tile--digraph';
+      bank.appendChild(OG.el('button', {
+        class: cls, type: 'button', text: g,
+        'aria-label': 'Use ' + g,
+        onclick: function () { swapIn(g); }
+      }));
+    });
+  }
+
+  function swapIn(g) {
+    if (state.selected === null) {
+      feedback.textContent = 'Tap the sound you want to change first.';
+      feedback.setAttribute('data-state', 'try');
+      return;
+    }
+    var attempt = state.current.slice();
+    attempt[state.selected] = g;
+    var word = attempt.join('');
+    if (word === target()) {
+      state.current = attempt;
+      state.selected = null;
+      if (state.slips === 0) state.correct++;
+      state.history.push(word);
+      feedback.textContent = changeMessage(word);
+      feedback.setAttribute('data-state', 'ok');
+      OG.say(word, { rate: 0.8 });
+      state.step++;
+      state.slips = 0;
+      wordRow.classList.add('pop');
+      setTimeout(function () {
+        wordRow.classList.remove('pop');
+        if (state.step >= state.chain.words.length) return finish();
+        renderAll();
+        speakTarget();
+      }, 950);
+    } else {
+      state.slips++;
+      feedback.textContent = 'That would make “' + word + '”. Listen again: ' + target() + '.';
+      feedback.setAttribute('data-state', 'try');
+      OG.say(target(), { rate: 0.65 });
+      if (state.slips >= 3) {
+        targetEl.textContent = 'Make the word: ' + target();
+      }
+    }
+  }
+
+  function changeMessage(word) {
+    var prev = state.history[state.history.length - 2];
+    var a = D.segment(prev), b = D.segment(word);
+    var at = -1;
+    for (var i = 0; i < Math.max(a.length, b.length); i++) { if (a[i] !== b[i]) { at = i; break; } }
+    var where = at === 0 ? 'first' : (at === b.length - 1 ? 'last' : 'middle');
+    return word + ' — the ' + where + ' sound changed.';
+  }
+
+  function finish() {
+    play.hidden = true; done.hidden = false; controlsEl.hidden = false;
+    document.getElementById('bar').style.width = '100%';
+    var links = state.chain.words.length - 1;
+    OG.progress.record('word-chains', state.correct, links);
+    document.getElementById('done-line').textContent =
+      state.correct + ' of ' + links + ' swaps found first time.';
+    var t = document.getElementById('done-trail');
+    t.innerHTML = '';
+    state.chain.words.forEach(function (w) { t.appendChild(OG.el('span', { text: w })); });
+  }
+
+  document.getElementById('start').addEventListener('click', start);
+  document.getElementById('again').addEventListener('click', start);
+  document.getElementById('hear').addEventListener('click', function () { if (state) speakTarget(); });
+  document.getElementById('hear-current').addEventListener('click', function () {
+    if (state) OG.say(state.current.join(''), { rate: 0.75 });
+  });
+  revealSelect.addEventListener('change', function () { if (state && !play.hidden) renderAll(); });
+
+  OG.shell({ active: 'index.html' });
+}());
+</script>
+</body>
+</html>

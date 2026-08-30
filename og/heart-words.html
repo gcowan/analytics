@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heart Words — OG Games</title>
+<meta name="description" content="Learn high-frequency irregular words the structured-literacy way: map the regular sounds, mark the part you must know by heart, then write it from memory.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .controls { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--sp-5); }
+  .letters { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: var(--sp-5) 0 var(--sp-3); }
+  .lbox {
+    font: inherit; font-weight: 750; cursor: pointer;
+    font-size: clamp(1.9rem, 7vw, 3rem); min-width: clamp(48px, 12vw, 76px);
+    padding: clamp(8px, 2vw, 16px) 0;
+    background: var(--surface-2); color: var(--ink);
+    border: 2px solid var(--line); border-radius: var(--r-md);
+  }
+  .lbox[aria-pressed="true"] { background: var(--coral-100); border-color: var(--coral-ink); color: var(--coral-ink); }
+  .lbox[data-reveal="heart"] { background: var(--coral-100); border-color: var(--coral-ink); color: var(--coral-ink); }
+  .lbox[disabled] { cursor: default; }
+  .heart-mark { display: block; font-size: .9rem; line-height: 1; margin-top: 2px; }
+  .write-row { display: flex; gap: var(--sp-3); justify-content: center; flex-wrap: wrap; align-items: center; margin: var(--sp-4) 0; }
+  .write-row input {
+    font-size: clamp(1.5rem, 5vw, 2.2rem); text-align: center; font-weight: 700;
+    letter-spacing: .12em; width: min(340px, 80vw);
+  }
+  .masked { filter: blur(9px); user-select: none; }
+  .wordlist { display: flex; flex-wrap: wrap; gap: 6px; }
+  .wordlist span { padding: 4px 12px; border-radius: var(--r-full); background: var(--surface-2); font-weight: 650; }
+  .wordlist span.miss { background: var(--coral-100); color: var(--coral-ink); }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <h1>Heart Words</h1>
+        <p>Some words won't sound out — but almost all of them are only <em>partly</em> odd.
+           Map the regular sounds, learn the odd bit by heart, then write it from memory.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="controls no-print">
+        <label class="field">
+          <span>How many words?</span>
+          <select id="count-select">
+            <option value="5">5 words</option>
+            <option value="8" selected>8 words</option>
+            <option value="12">12 words</option>
+          </select>
+        </label>
+        <button class="btn" type="button" id="start">Start a round</button>
+      </div>
+
+      <div id="play" hidden>
+        <div class="scorebar">
+          <div><span>Word</span> <strong id="pos">1</strong> <span>of <span id="total">8</span></span></div>
+          <div><span>Written correctly</span> <strong id="score">0</strong></div>
+          <div style="flex:1;min-width:140px"><div class="progressbar"><i id="bar"></i></div></div>
+        </div>
+
+        <p id="instruction" style="text-align:center;font-weight:650;margin:0"></p>
+        <div class="letters" id="letters"></div>
+
+        <div id="write-ui" hidden>
+          <div class="write-row">
+            <label class="sr-only" for="typed">Type the word from memory</label>
+            <input class="input" type="text" id="typed" autocomplete="off" autocapitalize="none"
+                   autocorrect="off" spellcheck="false" inputmode="text">
+            <button class="btn" type="button" id="check-typed">Check</button>
+          </div>
+        </div>
+
+        <div class="btn-row" id="actions" style="justify-content:center"></div>
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+        <div class="note" id="explain" hidden></div>
+      </div>
+
+      <div id="done" hidden>
+        <h2>Round finished</h2>
+        <p id="done-line"></p>
+        <div class="wordlist" id="done-words"></div>
+        <div class="note" style="margin-top:var(--sp-4)"><strong>Tomorrow</strong>
+          Re-run the same words once. A word is learned when it comes back correctly on a different day,
+          not when it comes back correctly twice in a row today.</div>
+        <div class="btn-row" style="margin-top:var(--sp-4)">
+          <button class="btn" type="button" id="again">Another round</button>
+          <a class="btn btn--ghost" href="index.html">All games</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage no-print">
+      <h2>Every heart word in this set</h2>
+      <p class="muted">Red letters are the parts that have to be remembered. Everything else behaves normally —
+         that is the whole point: there is far less to memorise than it looks.</p>
+      <div class="grid grid--three" id="all-words"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+  var lettersEl = document.getElementById('letters');
+  var actions = document.getElementById('actions');
+  var feedback = document.getElementById('feedback');
+  var explain = document.getElementById('explain');
+  var instruction = document.getElementById('instruction');
+  var writeUI = document.getElementById('write-ui');
+  var typed = document.getElementById('typed');
+  var play = document.getElementById('play');
+  var done = document.getElementById('done');
+  var state = null;
+  var controlsEl = document.querySelector('.controls');
+
+  /* Let a player back out to the setup panel without reloading the page. */
+  (function () {
+    var bar = document.querySelector('.scorebar');
+    if (!bar) return;
+    bar.appendChild(OG.el('button', {
+      class: 'btn btn--quiet no-print', type: 'button', text: 'Change setup',
+      onclick: function () { controlsEl.hidden = false; play.hidden = true; done.hidden = true; }
+    }));
+  }());
+
+  /* Reference wall of every word in the set */
+  D.HEART.forEach(function (item) {
+    var word = OG.el('div', { style: 'font-size:1.5rem;font-weight:750;letter-spacing:.04em' },
+      item.w.split('').map(function (ch, i) {
+        return OG.el('span', {
+          text: ch,
+          style: item.heart.indexOf(i) !== -1 ? 'color:var(--coral-ink)' : ''
+        });
+      }));
+    document.getElementById('all-words').appendChild(
+      OG.el('div', { class: 'card', style: 'box-shadow:none;gap:var(--sp-2)' }, [
+        word, OG.el('p', { class: 'card__stat', text: item.note })
+      ]));
+  });
+
+  function start() {
+    var n = parseInt(document.getElementById('count-select').value, 10);
+    state = { items: OG.shuffle(D.HEART).slice(0, n), i: 0, correct: 0, missed: [] };
+    document.getElementById('total').textContent = String(state.items.length);
+    play.hidden = false; done.hidden = true; controlsEl.hidden = true;
+    showItem();
+  }
+
+  function showItem() {
+    var item = state.items[state.i];
+    state.phase = 'map'; state.marked = []; state.slips = 0;
+    feedback.textContent = ''; feedback.removeAttribute('data-state');
+    explain.hidden = true; writeUI.hidden = true; typed.value = '';
+    document.getElementById('pos').textContent = String(state.i + 1);
+    document.getElementById('score').textContent = String(state.correct);
+    document.getElementById('bar').style.width = Math.round((state.i / state.items.length) * 100) + '%';
+    instruction.textContent = 'Which letters do not behave? Tap the heart part.';
+    renderLetters();
+    renderActions();
+    OG.say(item.w, { rate: 0.75 });
+    OG.announce('Word: ' + item.w);
+  }
+
+  function renderLetters(opts) {
+    opts = opts || {};
+    var item = state.items[state.i];
+    lettersEl.innerHTML = '';
+    lettersEl.classList.toggle('masked', !!opts.masked);
+    item.w.split('').forEach(function (ch, idx) {
+      var isHeart = item.heart.indexOf(idx) !== -1;
+      var marked = state.marked.indexOf(idx) !== -1;
+      var btn = OG.el('button', {
+        class: 'lbox', type: 'button',
+        disabled: state.phase !== 'map',
+        'aria-pressed': String(marked),
+        'data-reveal': opts.reveal && isHeart ? 'heart' : null,
+        'aria-label': ch + (opts.reveal && isHeart ? ', heart part' : ''),
+        onclick: function () {
+          var at = state.marked.indexOf(idx);
+          if (at === -1) state.marked.push(idx); else state.marked.splice(at, 1);
+          renderLetters(opts);
+        }
+      }, [document.createTextNode(ch)]);
+      if (opts.reveal && isHeart) {
+        btn.appendChild(OG.el('span', { class: 'heart-mark', text: '♥', 'aria-hidden': 'true' }));
+      }
+      lettersEl.appendChild(btn);
+    });
+  }
+
+  function renderActions() {
+    actions.innerHTML = '';
+    var item = state.items[state.i];
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: '🔊 Hear it',
+      onclick: function () { OG.say(item.w, { rate: 0.75 }); }
+    }));
+    if (state.phase === 'map') {
+      actions.appendChild(OG.el('button', { class: 'btn', type: 'button', text: 'Check the heart part', onclick: checkMap }));
+    }
+  }
+
+  function checkMap() {
+    var item = state.items[state.i];
+    var got = state.marked.slice().sort(function (a, b) { return a - b; });
+    var want = item.heart.slice().sort(function (a, b) { return a - b; });
+    if (got.join(',') === want.join(',')) {
+      feedback.textContent = 'That is the heart part.';
+      feedback.setAttribute('data-state', 'ok');
+      toWritePhase();
+    } else {
+      state.slips++;
+      if (state.slips >= 2) {
+        feedback.textContent = 'Here it is — the red letters are the part to remember.';
+        feedback.setAttribute('data-state', 'try');
+        toWritePhase();
+      } else {
+        feedback.textContent = 'Not quite. Say the word slowly: which letters do not make the sound you expect?';
+        feedback.setAttribute('data-state', 'try');
+      }
+    }
+  }
+
+  function toWritePhase() {
+    var item = state.items[state.i];
+    state.phase = 'look';
+    renderLetters({ reveal: true });
+    renderActions();
+    explain.hidden = false;
+    explain.innerHTML = '<strong>' + item.w + '</strong>' + item.note;
+    instruction.textContent = 'Look at it. Say it. Spell it out loud.';
+    actions.innerHTML = '';
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: '🔊 Hear it',
+      onclick: function () { OG.say(item.w, { rate: 0.75 }); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn', type: 'button', text: 'Cover it and write it',
+      onclick: function () {
+        state.phase = 'write';
+        renderLetters({ masked: true, reveal: true });
+        instruction.textContent = 'Now write it from memory.';
+        writeUI.hidden = false;
+        actions.innerHTML = '';
+        typed.focus();
+      }
+    }));
+  }
+
+  function checkTyped() {
+    if (state.phase !== 'write') return;
+    var item = state.items[state.i];
+    var attempt = typed.value.trim().toLowerCase();
+    if (!attempt) return;
+    if (attempt === item.w) {
+      state.correct++;
+      feedback.textContent = 'Correct — ' + item.w + '.';
+      feedback.setAttribute('data-state', 'ok');
+      renderLetters({ reveal: true });
+      setTimeout(next, 900);
+    } else {
+      state.missed.push(item.w);
+      feedback.textContent = 'You wrote “' + attempt + '”. The word is “' + item.w + '” — look at the red letters again.';
+      feedback.setAttribute('data-state', 'try');
+      renderLetters({ reveal: true });
+      setTimeout(next, 2200);
+    }
+    state.phase = 'shown';
+  }
+
+  function next() {
+    state.i++;
+    if (state.i >= state.items.length) return finish();
+    showItem();
+  }
+
+  function finish() {
+    play.hidden = true; done.hidden = false; controlsEl.hidden = false;
+    document.getElementById('bar').style.width = '100%';
+    OG.progress.record('heart-words', state.correct, state.items.length);
+    document.getElementById('done-line').textContent =
+      state.correct + ' of ' + state.items.length + ' written correctly from memory.';
+    var box = document.getElementById('done-words');
+    box.innerHTML = '';
+    state.items.forEach(function (item) {
+      box.appendChild(OG.el('span', {
+        text: item.w, class: state.missed.indexOf(item.w) !== -1 ? 'miss' : ''
+      }));
+    });
+  }
+
+  document.getElementById('start').addEventListener('click', start);
+  document.getElementById('again').addEventListener('click', start);
+  document.getElementById('check-typed').addEventListener('click', checkTyped);
+  typed.addEventListener('keydown', function (e) { if (e.key === 'Enter') checkTyped(); });
+
+  OG.shell({ active: 'index.html' });
+}());
+</script>
+</body>
+</html>

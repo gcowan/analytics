@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blend &amp; Build — OG Games</title>
+<meta name="description" content="Tap each sound, blend the word, then build it from letter tiles. Orton–Gillingham blending practice from short vowels to vowel teams.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .controls { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--sp-5); }
+  .answer-row {
+    display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+    min-height: clamp(64px, 14vw, 96px); padding: var(--sp-2);
+    border: 2px dashed var(--line); border-radius: var(--r-md); margin-bottom: var(--sp-4);
+    align-items: center;
+  }
+  .answer-row:empty::after { content: 'Build the word here'; color: var(--ink-3); font-size: .95rem; }
+  .bank { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: var(--sp-4); }
+  .tile[data-used="true"] { opacity: .25; pointer-events: none; }
+  .keyword { font-size: .95rem; color: var(--ink-3); text-align: center; min-height: 1.6em; }
+  .summary-word { display: inline-block; padding: 4px 12px; border-radius: var(--r-full); background: var(--surface-2); margin: 3px; font-weight: 650; }
+  .summary-word.miss { background: var(--coral-100); color: var(--coral-ink); }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <h1>Blend &amp; Build</h1>
+        <p>Read the word sound by sound, then build it back from tiles. Tap any tile to hear its sound and key word.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="controls no-print">
+        <label class="field">
+          <span>Word set</span>
+          <select id="set-select"></select>
+        </label>
+        <label class="field">
+          <span>Mode</span>
+          <select id="mode-select">
+            <option value="read">Read it — I sound out and blend</option>
+            <option value="build">Build it — I hear it and spell it</option>
+          </select>
+        </label>
+        <label class="field" id="nonsense-wrap">
+          <span>Silly words</span>
+          <select id="nonsense-select">
+            <option value="off">Real words</option>
+            <option value="on">Nonsense words</option>
+          </select>
+        </label>
+        <button class="btn" type="button" id="start">Start a round</button>
+      </div>
+
+      <div id="play" hidden>
+        <div class="scorebar">
+          <div><span>Word</span> <strong id="pos">1</strong> <span>of 8</span></div>
+          <div><span>Correct</span> <strong id="score">0</strong></div>
+          <div style="flex:1;min-width:140px"><div class="progressbar"><i id="bar"></i></div></div>
+        </div>
+
+        <div class="word" id="word-row"></div>
+        <p class="keyword" id="keyword"></p>
+
+        <div id="build-ui" hidden>
+          <div class="answer-row" id="answer" aria-label="Your answer"></div>
+          <div class="bank" id="bank"></div>
+        </div>
+
+        <div class="btn-row" id="actions" style="justify-content:center"></div>
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      </div>
+
+      <div id="done" hidden>
+        <h2>Round finished</h2>
+        <p id="done-line"></p>
+        <div id="done-words"></div>
+        <div class="btn-row" style="margin-top:var(--sp-4)">
+          <button class="btn" type="button" id="again">Another round</button>
+          <a class="btn btn--ghost" href="index.html">Back to all games</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage no-print">
+      <h2>For the grown-up</h2>
+      <p class="muted" style="margin:0">In <strong>Read it</strong> mode, ask for the sounds first, then the whole
+        word — never the other way round. If a word needs more than one attempt, put it back in the pile and come
+        to it again tomorrow. In <strong>Build it</strong> mode the word is spoken but hidden: that is spelling
+        from dictation, which is harder than reading, so expect to drop back a set or two.</p>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+  var ROUND = 8;
+  var setSelect = document.getElementById('set-select');
+  var modeSelect = document.getElementById('mode-select');
+  var nonsenseSelect = document.getElementById('nonsense-select');
+  var nonsenseWrap = document.getElementById('nonsense-wrap');
+  var play = document.getElementById('play');
+  var done = document.getElementById('done');
+  var wordRow = document.getElementById('word-row');
+  var keyword = document.getElementById('keyword');
+  var buildUI = document.getElementById('build-ui');
+  var answerRow = document.getElementById('answer');
+  var bank = document.getElementById('bank');
+  var actions = document.getElementById('actions');
+  var feedback = document.getElementById('feedback');
+
+  var custom = OG.customList();
+  var state = null;
+  var controlsEl = document.querySelector('.controls');
+
+  /* Let a player back out to the setup panel without reloading the page. */
+  (function () {
+    var bar = document.querySelector('.scorebar');
+    if (!bar) return;
+    bar.appendChild(OG.el('button', {
+      class: 'btn btn--quiet no-print', type: 'button', text: 'Change setup',
+      onclick: function () { controlsEl.hidden = false; play.hidden = true; done.hidden = true; }
+    }));
+  }());
+
+  /* --- set list ---------------------------------------------------------- */
+  if (custom && custom.length) {
+    setSelect.appendChild(OG.el('option', { value: 'custom', text: 'Shared list (' + custom.length + ' words)' }));
+  }
+  D.SETS.forEach(function (s) {
+    setSelect.appendChild(OG.el('option', { value: s.id, text: 'Stage ' + s.level + ' · ' + s.label }));
+  });
+
+  function currentSet() {
+    if (setSelect.value === 'custom') {
+      return { id: 'custom', label: 'Shared list', skill: 'custom',
+               words: custom.map(function (w) { return { w: w, g: D.segment(w) }; }) };
+    }
+    return D.SETS.filter(function (s) { return s.id === setSelect.value; })[0];
+  }
+
+  function nonsenseAvailable() {
+    var s = currentSet();
+    return s && (s.skill === 'closed' || s.skill === 'digraphs');
+  }
+  function syncNonsense() {
+    nonsenseWrap.style.display = nonsenseAvailable() ? '' : 'none';
+    if (!nonsenseAvailable()) nonsenseSelect.value = 'off';
+  }
+  setSelect.addEventListener('change', syncNonsense);
+
+  var ONSETS = ['b','c','d','f','g','h','j','l','m','n','p','r','s','t','v','z','sh','ch','th'];
+  var CODAS  = ['b','d','f','g','k','l','m','n','p','s','t','ck','sh','ch','th'];
+  var VOWELS = ['a','e','i','o','u'];
+  function nonsenseWord() {
+    var g = [OG.sample(ONSETS), OG.sample(VOWELS), OG.sample(CODAS)];
+    return { w: g.join(''), g: g, nonsense: true };
+  }
+
+  /* --- tiles -------------------------------------------------------------- */
+  function tileClass(g, silent) {
+    var meta = D.GRAPHEMES[g];
+    var cls = 'tile';
+    if (silent) return cls + ' tile--static';
+    if (!meta) return cls;
+    if (meta.type === 'vowel' || meta.type === 'team') cls += ' tile--vowel';
+    else if (meta.type === 'digraph' || meta.type === 'rcontrolled') cls += ' tile--digraph';
+    return cls;
+  }
+
+  function makeTile(g, opts) {
+    opts = opts || {};
+    var meta = D.GRAPHEMES[g];
+    var btn = OG.el('button', {
+      class: tileClass(g, opts.silent), type: 'button', text: g,
+      'aria-label': opts.silent ? 'silent e' : (meta ? g + ', as in ' + meta.key : g)
+    });
+    if (opts.silent) btn.style.opacity = '.55';
+    btn.addEventListener('click', function () {
+      if (opts.onclick) return opts.onclick(g, btn);
+      OG.sayGrapheme(g, D.GRAPHEMES);
+      keyword.textContent = meta ? '/' + g + '/ as in ' + meta.key : '';
+    });
+    return btn;
+  }
+
+  /* --- round -------------------------------------------------------------- */
+  function startRound() {
+    var set = currentSet();
+    if (!set) return;
+    var items;
+    if (nonsenseSelect.value === 'on') {
+      items = []; for (var i = 0; i < ROUND; i++) items.push(nonsenseWord());
+    } else {
+      items = OG.shuffle(set.words).slice(0, ROUND);
+      while (items.length < ROUND && set.words.length) items = items.concat(OG.shuffle(set.words).slice(0, ROUND - items.length));
+    }
+    state = { set: set, items: items, i: 0, correct: 0, missed: [], mode: modeSelect.value, tries: 0 };
+    play.hidden = false; done.hidden = true; controlsEl.hidden = true;
+    showItem();
+  }
+
+  function showItem() {
+    var item = state.items[state.i];
+    state.tries = 0;
+    feedback.textContent = ''; feedback.removeAttribute('data-state');
+    keyword.textContent = '';
+    document.getElementById('pos').textContent = String(state.i + 1);
+    document.getElementById('score').textContent = String(state.correct);
+    document.getElementById('bar').style.width = Math.round((state.i / ROUND) * 100) + '%';
+    wordRow.innerHTML = ''; bank.innerHTML = ''; answerRow.innerHTML = ''; actions.innerHTML = '';
+
+    if (state.mode === 'read') { renderRead(item); } else { renderBuild(item); }
+  }
+
+  function renderRead(item) {
+    buildUI.hidden = true;
+    item.g.forEach(function (g, idx) {
+      wordRow.appendChild(makeTile(g, { silent: item.silent && item.silent.indexOf(idx) !== -1 }));
+    });
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: 'Sound it out',
+      onclick: function () { OG.sayBlend(item.g.filter(function (g, i) { return !(item.silent && item.silent.indexOf(i) !== -1); }), item.w, D.GRAPHEMES); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: 'Say the word',
+      onclick: function () { OG.say(item.w, { rate: 0.75 }); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn', type: 'button', text: 'I read it ✓',
+      onclick: function () { mark(true, 'Nice reading.'); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: 'Needed help',
+      onclick: function () { mark(false, 'No problem — we will come back to “' + item.w + '”.'); }
+    }));
+  }
+
+  function renderBuild(item) {
+    buildUI.hidden = false;
+    var placed = [];
+    var distractors = OG.shuffle(['b','m','t','s','p','n','sh','ch','a','i','o','e','u','ck','th'])
+      .filter(function (g) { return item.g.indexOf(g) === -1; }).slice(0, 3);
+    var bankTiles = OG.shuffle(item.g.concat(distractors));
+
+    function refresh() {
+      answerRow.innerHTML = '';
+      placed.forEach(function (entry, idx) {
+        var t = makeTile(entry.g, { onclick: function () {
+          entry.source.setAttribute('data-used', 'false');
+          placed.splice(idx, 1); refresh();
+        } });
+        t.setAttribute('aria-label', 'Remove ' + entry.g);
+        answerRow.appendChild(t);
+      });
+    }
+
+    bankTiles.forEach(function (g) {
+      var t = makeTile(g, { onclick: function (gg, btn) {
+        if (btn.getAttribute('data-used') === 'true') return;
+        btn.setAttribute('data-used', 'true');
+        placed.push({ g: gg, source: btn });
+        OG.sayGrapheme(gg, D.GRAPHEMES);
+        refresh();
+      } });
+      bank.appendChild(t);
+    });
+
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: '🔊 Hear the word',
+      onclick: function () { OG.say(item.w, { rate: 0.7 }); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: 'Hear the sounds',
+      onclick: function () { OG.sayBlend(item.g.filter(function (g, i) { return !(item.silent && item.silent.indexOf(i) !== -1); }), item.w, D.GRAPHEMES); }
+    }));
+    actions.appendChild(OG.el('button', {
+      class: 'btn', type: 'button', text: 'Check',
+      onclick: function () {
+        var attempt = placed.map(function (p) { return p.g; }).join('');
+        if (attempt === item.w) { mark(true, '“' + item.w + '” — spelled it.'); return; }
+        state.tries++;
+        if (state.tries === 1) {
+          feedback.textContent = 'Not yet. Say the word slowly and listen for each sound.';
+          feedback.setAttribute('data-state', 'try');
+          answerRow.classList.add('nudge');
+          setTimeout(function () { answerRow.classList.remove('nudge'); }, 320);
+          OG.say(item.w, { rate: 0.6 });
+        } else {
+          feedback.textContent = 'The word is “' + item.w + '”. Look at it, then we will try it again later.';
+          feedback.setAttribute('data-state', 'try');
+          mark(false, null, 900);
+        }
+      }
+    }));
+    keyword.textContent = 'Listen, then build the word with the tiles.';
+    // Say the target once the item appears — this is dictation, after all.
+    OG.say(item.w, { rate: 0.7 });
+    refresh();
+  }
+
+  function mark(ok, message, delay) {
+    if (ok) { state.correct++; feedback.setAttribute('data-state', 'ok'); }
+    else { state.missed.push(state.items[state.i].w); }
+    if (message) { feedback.textContent = message; }
+    OG.announce(message || (ok ? 'Correct' : 'Try again later'));
+    setTimeout(next, delay || 700);
+  }
+
+  function next() {
+    state.i++;
+    if (state.i >= state.items.length) return finish();
+    showItem();
+  }
+
+  function finish() {
+    play.hidden = true; done.hidden = false; controlsEl.hidden = false;
+    document.getElementById('bar').style.width = '100%';
+    OG.progress.record('blend', state.correct, state.items.length);
+    document.getElementById('done-line').textContent =
+      state.correct + ' out of ' + state.items.length + ' first time. ' +
+      (state.missed.length ? 'Worth another look:' : 'Every word — try the next set up.');
+    var box = document.getElementById('done-words');
+    box.innerHTML = '';
+    state.items.forEach(function (it) {
+      box.appendChild(OG.el('span', {
+        class: 'summary-word' + (state.missed.indexOf(it.w) !== -1 ? ' miss' : ''), text: it.w
+      }));
+    });
+  }
+
+  document.getElementById('start').addEventListener('click', startRound);
+  document.getElementById('again').addEventListener('click', startRound);
+  syncNonsense();
+  OG.shell({ active: 'index.html' });
+}());
+</script>
+</body>
+</html>
