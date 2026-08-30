@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suffix Lab — OG Games</title>
+<meta name="description" content="Double it, drop the e, change y to i, or just add it? Decide which suffix rule applies, then spell the word.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .controls { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--sp-5); }
+  .equation {
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-3);
+    flex-wrap: wrap; margin: var(--sp-5) 0 var(--sp-3);
+    font-size: clamp(1.7rem, 6vw, 2.8rem); font-weight: 750;
+  }
+  .equation .op { color: var(--ink-3); font-weight: 500; }
+  .equation .suffix { color: var(--brand-700); }
+  .rule-chips { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-top: var(--sp-4); }
+  .rule-chips .chip { justify-content: flex-start; text-align: left; min-height: 62px; width: 100%; }
+  .write-row { display: flex; gap: var(--sp-3); justify-content: center; flex-wrap: wrap; align-items: center; margin: var(--sp-4) 0; }
+  .write-row input { font-size: clamp(1.4rem, 4.5vw, 2rem); text-align: center; font-weight: 700; letter-spacing: .1em; width: min(340px, 80vw); }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <h1>Suffix Lab</h1>
+        <p>Four rules cover almost every word ending in English. Pick the rule first,
+           then spell it — that order is what makes it transfer to writing.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="controls no-print">
+        <label class="field">
+          <span>Focus</span>
+          <select id="focus-select">
+            <option value="all">Mixed — all four rules</option>
+          </select>
+        </label>
+        <button class="btn" type="button" id="start">Start a round</button>
+      </div>
+
+      <div id="play" hidden>
+        <div class="scorebar">
+          <div><span>Word</span> <strong id="pos">1</strong> <span>of 8</span></div>
+          <div><span>Spelled right</span> <strong id="score">0</strong></div>
+          <div style="flex:1;min-width:140px"><div class="progressbar"><i id="bar"></i></div></div>
+        </div>
+
+        <p class="equation" id="equation"></p>
+        <p style="text-align:center;font-weight:650;margin:0" id="instruction">Which rule applies?</p>
+
+        <div class="rule-chips" id="rule-chips"></div>
+
+        <div id="write-ui" hidden>
+          <div class="write-row">
+            <label class="sr-only" for="typed">Type the finished word</label>
+            <input class="input" type="text" id="typed" autocomplete="off" autocapitalize="none"
+                   autocorrect="off" spellcheck="false">
+            <button class="btn" type="button" id="check-typed">Check</button>
+          </div>
+        </div>
+
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      </div>
+
+      <div id="done" hidden>
+        <h2>Round finished</h2>
+        <p id="done-line"></p>
+        <div class="note" id="done-note"></div>
+        <div class="btn-row" style="margin-top:var(--sp-4)">
+          <button class="btn" type="button" id="again">Another round</button>
+          <a class="btn btn--ghost" href="index.html">All games</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage no-print">
+      <h2>The four rules</h2>
+      <div class="grid grid--two" id="rules-ref"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+  var ROUND = 8;
+  var focusSelect = document.getElementById('focus-select');
+  var equation = document.getElementById('equation');
+  var chipsEl = document.getElementById('rule-chips');
+  var writeUI = document.getElementById('write-ui');
+  var typed = document.getElementById('typed');
+  var feedback = document.getElementById('feedback');
+  var instruction = document.getElementById('instruction');
+  var play = document.getElementById('play');
+  var done = document.getElementById('done');
+  var state = null;
+  var controlsEl = document.querySelector('.controls');
+
+  /* Let a player back out to the setup panel without reloading the page. */
+  (function () {
+    var bar = document.querySelector('.scorebar');
+    if (!bar) return;
+    bar.appendChild(OG.el('button', {
+      class: 'btn btn--quiet no-print', type: 'button', text: 'Change setup',
+      onclick: function () { controlsEl.hidden = false; play.hidden = true; done.hidden = true; }
+    }));
+  }());
+
+  D.SUFFIX_RULES.forEach(function (r) {
+    focusSelect.appendChild(OG.el('option', { value: r.id, text: 'Just: ' + r.label }));
+    document.getElementById('rules-ref').appendChild(
+      OG.el('div', { class: 'card', style: 'box-shadow:none' }, [
+        OG.el('h3', { text: r.label }),
+        OG.el('p', { text: r.test }),
+        OG.el('p', { class: 'card__stat',
+          text: r.items.slice(0, 3).map(function (i) { return i[0] + ' + ' + i[1] + ' → ' + i[2]; }).join(' · ') })
+      ]));
+  });
+
+  function buildPool() {
+    var pool = [];
+    D.SUFFIX_RULES.forEach(function (r) {
+      if (focusSelect.value !== 'all' && focusSelect.value !== r.id) return;
+      r.items.forEach(function (it) { pool.push({ base: it[0], suffix: it[1], answer: it[2], rule: r.id }); });
+    });
+    return pool;
+  }
+
+  function start() {
+    state = { items: OG.shuffle(buildPool()).slice(0, ROUND), i: 0, correct: 0, ruleRight: 0, missed: [] };
+    play.hidden = false; done.hidden = true; controlsEl.hidden = true;
+    showItem();
+  }
+
+  function showItem() {
+    var item = state.items[state.i];
+    state.phase = 'rule'; state.slips = 0;
+    feedback.textContent = ''; feedback.removeAttribute('data-state');
+    writeUI.hidden = true; typed.value = '';
+    instruction.textContent = 'Which rule applies?';
+    document.getElementById('pos').textContent = String(state.i + 1);
+    document.getElementById('score').textContent = String(state.correct);
+    document.getElementById('bar').style.width = Math.round((state.i / state.items.length) * 100) + '%';
+    equation.innerHTML = '';
+    equation.appendChild(OG.el('span', { text: item.base }));
+    equation.appendChild(OG.el('span', { class: 'op', text: '+' }));
+    equation.appendChild(OG.el('span', { class: 'suffix', text: '-' + item.suffix }));
+    equation.appendChild(OG.el('span', { class: 'op', text: '=' }));
+    equation.appendChild(OG.el('span', { class: 'op', text: '?' }));
+    renderChips();
+    OG.announce(item.base + ' plus ' + item.suffix);
+  }
+
+  function renderChips() {
+    chipsEl.hidden = false;
+    chipsEl.innerHTML = '';
+    D.SUFFIX_RULES.forEach(function (r) {
+      chipsEl.appendChild(OG.el('button', {
+        class: 'chip', type: 'button', text: r.label, 'aria-pressed': 'false',
+        onclick: function () { pickRule(r, this); }
+      }));
+    });
+  }
+
+  function pickRule(rule, btn) {
+    if (state.phase !== 'rule') return;
+    var item = state.items[state.i];
+    if (rule.id === item.rule) {
+      if (state.slips === 0) state.ruleRight++;
+      btn.setAttribute('aria-pressed', 'true');
+      feedback.textContent = rule.label + ' — ' + rule.test;
+      feedback.setAttribute('data-state', 'ok');
+      state.phase = 'write';
+      instruction.textContent = 'Now spell the whole word.';
+      chipsEl.hidden = true;
+      writeUI.hidden = false;
+      typed.focus();
+    } else {
+      state.slips++;
+      feedback.textContent = state.slips === 1
+        ? 'Not this one. Look at the end of “' + item.base + '” and the start of “-' + item.suffix + '”.'
+        : 'The rule here is: ' + D.SUFFIX_RULES.filter(function (r) { return r.id === item.rule; })[0].test;
+      feedback.setAttribute('data-state', 'try');
+    }
+  }
+
+  function checkTyped() {
+    if (state.phase !== 'write') return;
+    var item = state.items[state.i];
+    var attempt = typed.value.trim().toLowerCase();
+    if (!attempt) return;
+    equation.lastChild.textContent = item.answer;
+    equation.lastChild.className = '';
+    if (attempt === item.answer) {
+      state.correct++;
+      feedback.textContent = 'Correct — ' + item.answer + '.';
+      feedback.setAttribute('data-state', 'ok');
+    } else {
+      state.missed.push(item.base + ' + ' + item.suffix + ' → ' + item.answer);
+      feedback.textContent = 'Almost — it is “' + item.answer + '”, not “' + attempt + '”.';
+      feedback.setAttribute('data-state', 'try');
+    }
+    state.phase = 'shown';
+    OG.say(item.answer, { rate: 0.8 });
+    setTimeout(next, attempt === item.answer ? 900 : 2000);
+  }
+
+  function next() {
+    state.i++;
+    if (state.i >= state.items.length) return finish();
+    showItem();
+  }
+
+  function finish() {
+    play.hidden = true; done.hidden = false; controlsEl.hidden = false;
+    document.getElementById('bar').style.width = '100%';
+    OG.progress.record('suffix-lab', state.correct, state.items.length);
+    document.getElementById('done-line').textContent =
+      state.correct + ' of ' + state.items.length + ' spelled correctly, and the rule was named first time ' +
+      state.ruleRight + ' times.';
+    document.getElementById('done-note').innerHTML = state.missed.length
+      ? '<strong>Worth another look</strong>' + state.missed.join('<br>')
+      : '<strong>All four rules holding up</strong>Try the same round with the word read aloud only — no equation on screen — for a harder version.';
+  }
+
+  document.getElementById('start').addEventListener('click', start);
+  document.getElementById('again').addEventListener('click', start);
+  document.getElementById('check-typed').addEventListener('click', checkTyped);
+  typed.addEventListener('keydown', function (e) { if (e.key === 'Enter') checkTyped(); });
+
+  OG.shell({ active: 'index.html' });
+}());
+</script>
+</body>
+</html>

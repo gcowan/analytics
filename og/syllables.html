@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Syllable Split — OG Games</title>
+<meta name="description" content="Mark the vowels, split the word, name the syllable type. Practice for VC/CV, V/CV, VC/V, consonant-le and compound words.">
+<meta name="theme-color" content="#0f6f6c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/og.css">
+<script src="assets/og.js"></script>
+<script src="data/words.js"></script>
+<style>
+  .controls { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: flex-end; margin-bottom: var(--sp-5); }
+  .steps-bar { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+  .steps-bar span {
+    padding: 5px 14px; border-radius: var(--r-full); font-size: .88rem; font-weight: 650;
+    background: var(--surface-2); color: var(--ink-3); border: 1px solid var(--line);
+  }
+  .steps-bar span[data-on="true"] { background: var(--brand-700); color: #fff; border-color: var(--brand-700); }
+  .steps-bar span[data-done="true"] { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+
+  .letters { display: flex; justify-content: center; align-items: stretch; flex-wrap: wrap; margin: var(--sp-4) 0; }
+  .letter {
+    font: inherit; font-weight: 750; cursor: pointer;
+    font-size: clamp(1.8rem, 7vw, 3rem); line-height: 1;
+    padding: clamp(10px, 2vw, 18px) clamp(4px, 1.2vw, 10px);
+    background: transparent; border: 2px solid transparent; border-radius: var(--r-sm); color: var(--ink);
+  }
+  .letter[data-vowel="marked"] { background: var(--coral-100); color: var(--coral-ink); border-color: var(--coral-ink); }
+  .letter[disabled] { cursor: default; }
+  .gap {
+    width: 20px; align-self: stretch; background: transparent; cursor: pointer;
+    border: none; border-radius: var(--r-sm); position: relative; padding: 0;
+  }
+  .gap::before {
+    content: ''; position: absolute; inset: 14% 45%; background: var(--line); border-radius: 2px;
+  }
+  .gap:hover::before { background: var(--brand-500); inset: 10% 42%; }
+  .gap[data-cut="true"]::before { background: var(--brand-700); inset: 6% 40%; }
+  .gap[disabled] { cursor: default; }
+  .gap[disabled]:not([data-cut="true"])::before { opacity: .25; }
+  .type-pick { display: grid; gap: var(--sp-4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .type-pick h3 { margin-bottom: var(--sp-2); font-size: 1rem; color: var(--ink-2); }
+  .pattern-chip { font-weight: 700; color: var(--plum); }
+</style>
+</head>
+<body>
+<main id="main">
+  <div class="wrap">
+    <div class="game-head">
+      <div>
+        <h1>Syllable Split</h1>
+        <p>Long words stop being scary when you can break them. Mark the vowels, cut the word,
+           then name the syllable type — the same three moves every time.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="controls no-print">
+        <label class="field">
+          <span>Pattern</span>
+          <select id="pattern-select">
+            <option value="all">Mixed — all patterns</option>
+            <option value="VC/CV">VC/CV — rabbit words</option>
+            <option value="V/CV">V/CV — tiger words</option>
+            <option value="VC/V">VC/V — camel words</option>
+            <option value="C+le">C + le — table words</option>
+            <option value="Compound">Compound words</option>
+          </select>
+        </label>
+        <button class="btn" type="button" id="start">Start a round</button>
+      </div>
+
+      <div id="play" hidden>
+        <div class="scorebar">
+          <div><span>Word</span> <strong id="pos">1</strong> <span>of 6</span></div>
+          <div><span>Clean splits</span> <strong id="score">0</strong></div>
+          <div style="flex:1;min-width:140px"><div class="progressbar"><i id="bar"></i></div></div>
+        </div>
+
+        <div class="steps-bar" aria-hidden="true">
+          <span id="st-1">1. Mark the vowels</span>
+          <span id="st-2">2. Cut the word</span>
+          <span id="st-3">3. Name the syllables</span>
+        </div>
+
+        <p id="instruction" style="text-align:center;font-weight:650;margin:0"></p>
+        <div class="letters" id="letters"></div>
+
+        <div id="type-step" hidden>
+          <div class="type-pick" id="type-pick"></div>
+        </div>
+
+        <div class="btn-row" id="actions" style="justify-content:center"></div>
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      </div>
+
+      <div id="done" hidden>
+        <h2>Round finished</h2>
+        <p id="done-line"></p>
+        <div class="note" id="done-note"></div>
+        <div class="btn-row" style="margin-top:var(--sp-4)">
+          <button class="btn" type="button" id="again">Another round</button>
+          <a class="btn btn--ghost" href="index.html">All games</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage no-print">
+      <h2>The six syllable types</h2>
+      <div class="grid grid--three" id="types-ref"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var D = window.OGDATA;
+  var ROUND = 6;
+  var VOWELS = 'aeiou';
+  var lettersEl = document.getElementById('letters');
+  var actions = document.getElementById('actions');
+  var feedback = document.getElementById('feedback');
+  var instruction = document.getElementById('instruction');
+  var typeStep = document.getElementById('type-step');
+  var typePick = document.getElementById('type-pick');
+  var play = document.getElementById('play');
+  var done = document.getElementById('done');
+  var state = null;
+  var controlsEl = document.querySelector('.controls');
+
+  /* Let a player back out to the setup panel without reloading the page. */
+  (function () {
+    var bar = document.querySelector('.scorebar');
+    if (!bar) return;
+    bar.appendChild(OG.el('button', {
+      class: 'btn btn--quiet no-print', type: 'button', text: 'Change setup',
+      onclick: function () { controlsEl.hidden = false; play.hidden = true; done.hidden = true; }
+    }));
+  }());
+
+  Object.keys(D.SYLLABLE_TYPES).forEach(function (k) {
+    var t = D.SYLLABLE_TYPES[k];
+    document.getElementById('types-ref').appendChild(
+      OG.el('div', { class: 'card', style: 'box-shadow:none' }, [
+        OG.el('h3', { text: t.label }), OG.el('p', { text: t.blurb })
+      ]));
+  });
+
+  function pool() {
+    var p = document.getElementById('pattern-select').value;
+    return p === 'all' ? D.SYLLABLES : D.SYLLABLES.filter(function (s) { return s.pattern === p; });
+  }
+
+  function start() {
+    var list = OG.shuffle(pool()).slice(0, ROUND);
+    state = { items: list, i: 0, clean: 0 };
+    play.hidden = false; done.hidden = true; controlsEl.hidden = true;
+    showItem();
+  }
+
+  function setStep(n) {
+    [1, 2, 3].forEach(function (s) {
+      var el = document.getElementById('st-' + s);
+      el.setAttribute('data-on', String(s === n));
+      el.setAttribute('data-done', String(s < n));
+    });
+  }
+
+  function showItem() {
+    var item = state.items[state.i];
+    state.step = 1; state.marked = []; state.cut = null; state.slips = 0; state.types = [null, null];
+    feedback.textContent = ''; feedback.removeAttribute('data-state');
+    typeStep.hidden = true; typePick.innerHTML = '';
+    document.getElementById('pos').textContent = String(state.i + 1);
+    document.getElementById('score').textContent = String(state.clean);
+    document.getElementById('bar').style.width = Math.round((state.i / state.items.length) * 100) + '%';
+    setStep(1);
+    instruction.textContent = 'Tap every vowel letter (a e i o u) in this word.';
+    renderWord();
+    renderActions();
+    OG.announce('Word ' + (state.i + 1) + ': ' + item.w + '. Tap every vowel.');
+  }
+
+  function renderWord() {
+    var item = state.items[state.i];
+    lettersEl.innerHTML = '';
+    item.w.split('').forEach(function (ch, idx) {
+      if (idx > 0) {
+        var gap = OG.el('button', {
+          class: 'gap', type: 'button',
+          'aria-label': 'Cut between ' + item.w[idx - 1] + ' and ' + ch,
+          disabled: state.step !== 2,
+          'data-cut': String(state.cut === idx),
+          onclick: function () { cutAt(idx); }
+        });
+        lettersEl.appendChild(gap);
+      }
+      var btn = OG.el('button', {
+        class: 'letter', type: 'button', text: ch,
+        disabled: state.step !== 1,
+        'data-vowel': state.marked.indexOf(idx) !== -1 ? 'marked' : 'no',
+        'aria-pressed': String(state.marked.indexOf(idx) !== -1),
+        onclick: function () { toggleVowel(idx); }
+      });
+      lettersEl.appendChild(btn);
+    });
+  }
+
+  function toggleVowel(idx) {
+    var at = state.marked.indexOf(idx);
+    if (at === -1) state.marked.push(idx); else state.marked.splice(at, 1);
+    renderWord();
+  }
+
+  function cutAt(idx) {
+    state.cut = idx;
+    renderWord();
+    checkCut();
+  }
+
+  function renderActions() {
+    actions.innerHTML = '';
+    var item = state.items[state.i];
+    actions.appendChild(OG.el('button', {
+      class: 'btn btn--ghost', type: 'button', text: '🔊 Hear the word',
+      onclick: function () { OG.say(item.w, { rate: 0.75 }); }
+    }));
+    if (state.step === 1) {
+      actions.appendChild(OG.el('button', { class: 'btn', type: 'button', text: 'Check the vowels', onclick: checkVowels }));
+    }
+  }
+
+  function checkVowels() {
+    var item = state.items[state.i];
+    var want = [];
+    item.w.split('').forEach(function (ch, i) { if (VOWELS.indexOf(ch) !== -1) want.push(i); });
+    var got = state.marked.slice().sort(function (a, b) { return a - b; });
+    if (got.join(',') === want.join(',')) {
+      feedback.textContent = 'Vowels found. Now cut the word between two syllables.';
+      feedback.setAttribute('data-state', 'ok');
+      state.step = 2; setStep(2);
+      instruction.textContent = 'Tap the line where the word splits.';
+      renderWord(); renderActions();
+    } else {
+      state.slips++;
+      feedback.textContent = want.length === got.length
+        ? 'Close — check each one again. Vowel letters are a, e, i, o and u.'
+        : 'This word has ' + want.length + ' vowel letters. You marked ' + got.length + '.';
+      feedback.setAttribute('data-state', 'try');
+    }
+  }
+
+  function checkCut() {
+    var item = state.items[state.i];
+    if (state.cut === item.split) {
+      feedback.textContent = 'Split it: ' + item.w.slice(0, item.split) + ' / ' + item.w.slice(item.split) +
+        ' — that is a ' + item.pattern + ' word.';
+      feedback.setAttribute('data-state', 'ok');
+      state.step = 3; setStep(3);
+      instruction.textContent = 'What kind of syllable is each part?';
+      renderWord(); renderActions(); renderTypes();
+      OG.say(item.w.slice(0, item.split) + '... ' + item.w.slice(item.split), { rate: 0.6 });
+    } else {
+      state.slips++;
+      feedback.textContent = hintFor(item);
+      feedback.setAttribute('data-state', 'try');
+      if (state.slips >= 3) {
+        state.cut = item.split;
+        feedback.textContent = 'Here it is: ' + item.w.slice(0, item.split) + ' / ' + item.w.slice(item.split) + '.';
+        state.step = 3; setStep(3);
+        instruction.textContent = 'What kind of syllable is each part?';
+        renderWord(); renderActions(); renderTypes();
+      }
+    }
+  }
+
+  function hintFor(item) {
+    switch (item.pattern) {
+      case 'VC/CV': return 'Two consonants in the middle? Cut between them.';
+      case 'V/CV':  return 'One consonant in the middle — try cutting before it, so the first vowel says its name.';
+      case 'VC/V':  return 'One consonant in the middle, but the first vowel is short — cut after the consonant.';
+      case 'C+le':  return 'The word ends in consonant + le. Count back three letters and cut there.';
+      default:      return 'This is two small words joined together. Cut between them.';
+    }
+  }
+
+  function renderTypes() {
+    var item = state.items[state.i];
+    typeStep.hidden = false;
+    typePick.innerHTML = '';
+    [0, 1].forEach(function (part) {
+      var text = part === 0 ? item.w.slice(0, item.split) : item.w.slice(item.split);
+      var chips = OG.el('div', { class: 'chips' });
+      Object.keys(D.SYLLABLE_TYPES).forEach(function (k) {
+        chips.appendChild(OG.el('button', {
+          class: 'chip', type: 'button', text: D.SYLLABLE_TYPES[k].label,
+          'aria-pressed': 'false',
+          onclick: function () {
+            Array.prototype.forEach.call(chips.children, function (c) { c.setAttribute('aria-pressed', 'false'); });
+            this.setAttribute('aria-pressed', 'true');
+            state.types[part] = k;
+            maybeCheckTypes();
+          }
+        }));
+      });
+      typePick.appendChild(OG.el('div', {}, [
+        OG.el('h3', { text: '“' + text + '” is a…' }), chips
+      ]));
+    });
+  }
+
+  function maybeCheckTypes() {
+    if (!state.types[0] || !state.types[1]) return;
+    var item = state.items[state.i];
+    var ok = state.types[0] === item.types[0] && state.types[1] === item.types[1];
+    if (ok) {
+      if (state.slips === 0) state.clean++;
+      feedback.textContent = 'Exactly — ' + D.SYLLABLE_TYPES[item.types[0]].label.toLowerCase() + ' + ' +
+        D.SYLLABLE_TYPES[item.types[1]].label.toLowerCase() + '.';
+      feedback.setAttribute('data-state', 'ok');
+      setTimeout(next, 1100);
+    } else {
+      state.slips++;
+      feedback.textContent = 'Not quite. ' + D.SYLLABLE_TYPES[item.types[0]].blurb;
+      feedback.setAttribute('data-state', 'try');
+      state.types = [null, null];
+      renderTypes();
+    }
+  }
+
+  function next() {
+    state.i++;
+    if (state.i >= state.items.length) return finish();
+    showItem();
+  }
+
+  function finish() {
+    play.hidden = true; done.hidden = false; controlsEl.hidden = false;
+    document.getElementById('bar').style.width = '100%';
+    OG.progress.record('syllables', state.clean, state.items.length);
+    document.getElementById('done-line').textContent =
+      state.clean + ' of ' + state.items.length + ' split cleanly first time.';
+    document.getElementById('done-note').innerHTML =
+      '<strong>The move to remember</strong>Find the vowels, look at what sits between them, then cut. ' +
+      'Two consonants in the middle: cut between them. One consonant: try the open syllable first ' +
+      '(<b>ti/ger</b>); if the word sounds wrong, move the cut over (<b>cam/el</b>).';
+  }
+
+  document.getElementById('start').addEventListener('click', start);
+  document.getElementById('again').addEventListener('click', start);
+  OG.shell({ active: 'index.html' });
+}());
+</script>
+</body>
+</html>
